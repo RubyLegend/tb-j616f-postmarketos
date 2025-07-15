@@ -1,0 +1,13 @@
+diff --git a/boost_manager.c.orig b/boost_manager.c
+index 61becf8..9a14160 100644
+--- a/drivers/extcon/mediatek/boost_manager.c
++++ b/drivers/extcon/mediatek/boost_manager.c
+@@ -145,7 +145,7 @@ int usb_otg_set_vbus(int is_on)
+ 		charger_dev_set_boost_current_limit(g_info->primary_charger,
+ 			1500000);
+ 	} else {
+-		charger_dev_enable_otg(primary_charger, false);
++		charger_dev_enable_otg(g_info->primary_charger, false);
+ 	}
+ #endif
+ 	return 0;

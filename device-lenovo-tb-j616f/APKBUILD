@@ -1,0 +1,34 @@
+# Reference: <https://postmarketos.org/devicepkg>
+pkgname=device-lenovo-tb-j616f
+pkgdesc="Lenovo Tab P11 Plus"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	linux-lenovo-tb-j616f
+	mkbootimg
+	postmarketos-base
+  make-dynpart-mappings
+  mtk-mkimage
+"
+makedepends="devicepkg-dev"
+source="
+	deviceinfo
+	modules-initfs
+"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+60feade0b10711ac67abf2a8041bcb433ef744eda5bd0649fffabecdb52ecb0b9f9e66303f7e3fa4b94a2ae777fd0e66192fed427583ba63de2c95a3e09ea54e  deviceinfo
+e70bae17df23dcaaaea0e2d3616556f04baa23f8ee1357785c0f539bf97282d8ddff53953e155b72689bb73beb38c2da3d08de2a61e866684edfa10a6593885d  modules-initfs
+"

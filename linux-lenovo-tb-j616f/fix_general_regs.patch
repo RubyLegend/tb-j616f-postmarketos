@@ -1,0 +1,23 @@
+--- a/drivers/power/supply/mediatek/battery/mtk_battery.c	2025-06-04 22:36:17.727797873 +0300
++++ b/drivers/power/supply/mediatek/battery/mtk_battery.c	2025-06-04 22:36:57.181730915 +0300
+@@ -545,17 +545,17 @@
+ 			}
+ 		}
+ 		if(batt_maintenance_mode ==1) {
+-			val->intval = (int)(val->intval * 1.08);
++			val->intval = (int)(val->intval * 108 / 100);
+ 			if(val->intval > 100)
+ 				val->intval = 100;
+ 			bm_debug("batt_maintenance_mode1:%d,mtk fg_get_capacity=%d\n", batt_maintenance_mode,val->intval);
+ 		} else if (batt_maintenance_mode ==2) {
+-			val->intval = (int)(val->intval * 1.13);
++			val->intval = (int)(val->intval * 113 / 100);
+ 			if(val->intval > 100)
+ 				val->intval = 100;
+ 			bm_debug("batt_maintenance_mode2:%d,mtk fg_get_capacity=%d\n", batt_maintenance_mode,val->intval);
+ 		} else if (batt_maintenance_mode == 3) {
+-			val->intval = (int)(val->intval * 1.28);
++			val->intval = (int)(val->intval * 128 / 100);
+ 			if(val->intval > 100)
+ 				val->intval = 100;
+ 			bm_debug("batt_maintenance_mode3:%d,mtk fg_get_capacity=%d\n", batt_maintenance_mode,val->intval);

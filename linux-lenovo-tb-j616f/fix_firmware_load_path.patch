@@ -1,0 +1,19 @@
+--- a/drivers/base/firmware_class.c.orig	2025-07-14 21:35:41.256448083 +0300
++++ b/drivers/base/firmware_class.c	2025-07-15 11:05:40.609802183 +0300
+@@ -367,6 +367,7 @@
+ /* direct firmware loading support */
+ static char fw_path_para[256];
+ static const char * const fw_path[] = {
++  "/lib/firmware/msm-firmware-loader/target",
+ 	fw_path_para,
+ 	"/vendor/firmware/",
+ 	"/lib/firmware/updates/" UTS_RELEASE,
+@@ -408,6 +409,8 @@
+ 		if (!fw_path[i][0])
+ 			continue;
+ 
++		dev_warn(device, "probing file: %s | under path: %s. buffer fw_id: %s\n", path, fw_path[i], buf->fw_id);
++
+ 		len = snprintf(path, PATH_MAX, "%s/%s",
+ 			       fw_path[i], buf->fw_id);
+ 		if (len >= PATH_MAX) {

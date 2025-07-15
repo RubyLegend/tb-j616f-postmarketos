@@ -1,0 +1,140 @@
+# Reference: <https://postmarketos.org/vendorkernel>
+# Kernel config based on: arch/arm64/configs/tb8185p3_64_defconfig
+
+pkgname=linux-lenovo-tb-j616f
+pkgver=4.14.1861
+pkgrel=0
+pkgdesc="Lenovo Tab P11 Plus kernel fork"
+arch="aarch64"
+_carch="arm64"
+_flavor="lenovo-tb-j616f"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native"
+makedepends="
+	bash
+	bc
+	bison
+	devicepkg-dev
+	findutils
+	flex
+	openssl-dev
+	perl
+	ncurses-dev
+	ncurses
+	dialog
+	linux-headers
+	cpio
+  xz
+  gcompat
+"
+# gcompat is required for prebuilt binaries, because they're linked
+# against ld-linux and not musl package
+
+
+# Source
+_repository="kernel"
+_commit="4.14"
+_config="config-$_flavor.$arch"
+source="
+	$pkgname-$_commit.tar.gz::https://download.lenovo.com/consumer/mobiles/tb-j616f_opensource_tb-j616f_s200122_220422_row.tar.gz
+	$_config
+	fix-check-lxdialog.patch
+	all_build_patches.patch
+	stop-inlining-blk_crypto_flock-and-ksm_flock.patch
+	use_system_cpio.patch
+	revert-ALPS04791965-dtc-remove-prebuilt-dtc_overlay.patch
+	fix_general_regs.patch
+  fix_firmware_load_path.patch
+"
+builddir="$srcdir/$_repository-$_commit"
+_outdir="out"
+
+prepare() {
+  # Changes to some directories to make it build propertly
+	mv drivers/misc/mediatek/met_drv drivers/misc/mediatek/met_drv_orig
+	ln -s ../../../../vendor/mediatek/kernel_modules/met_drv/4.14/ drivers/misc/mediatek/met_drv
+	cp drivers/misc/mediatek/met_drv_orig/met_api.c drivers/misc/mediatek/met_drv/
+	echo "obj-y += met_api.o" >> drivers/misc/mediatek/met_drv/Makefile
+
+  # Mask sed in prebuilts, doesn't work propertly in musl environment
+  mv ../prebuilts/build-tools/path/linux-x86/sed ../prebuilts/build-tools/path/linux-x86/sed.toybox
+
+  # Cleanup existing out directory, because idk where the hell it builds
+  rm -rf out/
+
+	default_prepare
+	REPLACE_GCCH=0 . downstreamkernel_prepare
+
+	cp -R vendor/mediatek/kernel_modules/connectivity/. ../vendor/mediatek/kernel_modules/connectivity/.
+}
+
+build() {
+	unset LDFLAGS
+  
+  # Changes to use supplied toolchain
+  # Otherwise - kernel panics due to stack errors
+  export CC=$builddir/../prebuilts/clang/host/linux-x86/clang-r383902/bin/clang
+  export CLANG_TRIPPLE=aarch64-linux-gnu-
+  # export PATH=$builddir/../prebuilts/build-tools/path/linux-x86:/usr/lib/ccache/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}
+  export ARCH=arm64
+  export CROSS_COMPILE_COMPAT=arm-linux-androideabi-
+  export SUBARCH=arm64
+  export CROSS_COMPILE=aarch64-linux-androidkernel-
+  export LD_LIBRARY_PATH=$builddir/../prebuilts/clang/host/linux-x86/clang-r383902/lib64:$LD_LIBRARY_PATH
+
+  PATH_CC=$builddir/../prebuilts/clang/host/linux-x86/clang-r383902/bin/clang
+  PATH_CROSS_COMPILE=$builddir/../prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.1/bin/aarch64-linux-androidkernel-
+  # Hope it will work out-of-the-box...
+
+	make V=1 O="$_outdir" ARCH="$_carch" CC="${PATH_CC}" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS" \
+    CROSS_COMPILE="${PATH_CROSS_COMPILE}" CLANG_TRIPLE="${CLANG_TRIPPLE}"
+	make V=1 O="$_outdir" ARCH="$_carch" CC="${PATH_CC}" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS" \
+    CROSS_COMPILE="${PATH_CROSS_COMPILE}" CLANG_TRIPLE="${CLANG_TRIPPLE}" \
+    modules
+}
+
+package() {
+	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" \
+		"$_flavor" "$_outdir"
+
+  # Changes to use supplied toolchain
+  # Otherwise - kernel panics due to stack errors
+  export CC=$builddir/../prebuilts/clang/host/linux-x86/clang-r383902/bin/clang
+  export CLANG_TRIPPLE=aarch64-linux-gnu-
+  # export PATH=$builddir/../prebuilts/build-tools/path/linux-x86:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/bin:/sbin:${PATH}
+  export ARCH=arm64
+  export CROSS_COMPILE_COMPAT=arm-linux-androideabi-
+  export SUBARCH=arm64
+  export CROSS_COMPILE=aarch64-linux-androidkernel-
+  export LD_LIBRARY_PATH=$builddir/../prebuilts/clang/host/linux-x86/clang-r383902/lib64:$LD_LIBRARY_PATH
+
+  PATH_CC=$builddir/../prebuilts/clang/host/linux-x86/clang-r383902/bin/clang
+  PATH_CROSS_COMPILE=$builddir/../prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.1/bin/aarch64-linux-androidkernel-
+  # Hope it will work out-of-the-box...
+
+	make dtbs_install O="$_outdir" ARCH="$_carch" \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs \
+    CROSS_COMPILE="${PATH_CROSS_COMPILE}" CLANG_TRIPLE="${CLANG_TRIPPLE}" \
+    CC="${CC}"
+
+	make O="$_outdir" ARCH="$_carch" \
+    INSTALL_MOD_STRIP=1 \
+		INSTALL_MOD_PATH="$pkgdir" \
+    CROSS_COMPILE="${PATH_CROSS_COMPILE}" CLANG_TRIPLE="${CLANG_TRIPPLE}" \
+    CC="${CC}" modules_install
+}
+
+sha512sums="
+b250a470f9777f7819f2455ab5451a81d42baef597426b66fccf2a490ec1c0d571cf95f23c6c4b1555bb49b62994674b90b1d2c678d05e3eaac1b2047f837216  linux-lenovo-tb-j616f-4.14.tar.gz
+9bd2daf2fed8de3d2994faf21d8fda01f6ad4f54a9459eefcf4ad5dd0fab2150f3ab7b4723d706e50fca758fbb5ceda8dd0a6de30a7ef13a435681cea4149409  config-lenovo-tb-j616f.aarch64
+182be3c596b9cc267ac108d7cf03fc8c328ccc6b36770800e4dcedea8d1bb65e3f5eacf590c2948f58b1418cc60a1670ba77dde8c259e428d158c31b6e1dbaf5  fix-check-lxdialog.patch
+0c70a1730f80a72443b372a3060335ed9c4872cdc53a22bff3f5e03b702b9beb65d3bc2286ffbb26d606e5af64bd33957f0c26e1294e6d0b8297c10b97ce0a3b  all_build_patches.patch
+e448a1093c09414be36333fbdb0d4a3bc5b59018d571b702c6607cb32927cf1563bf03aa1f2d502e6040490e0b26198dd8204306ebaad41be810ba2d47a2721c  stop-inlining-blk_crypto_flock-and-ksm_flock.patch
+28975f5aac872eab10bdfe2b29a8685b70ddb0d105c6c66a26de88ac912573b430fa20901b65384c9cb99d9740cdff7804cfd95474176f93a5bffbccf8182208  use_system_cpio.patch
+d3a19d48fe1392cb7d48d5bf21073a32045a3937233435d016129f31b5e43ec220c5481c2c31c6a787efc14f934028de33d8be79bed212d288dd9a40bd6834de  revert-ALPS04791965-dtc-remove-prebuilt-dtc_overlay.patch
+c2c95bea639c4eea4a6fb20fb7c5971c44a0eceacb48ce4e059c3fc92dd5931401419d0866f94bf6ca1e82307cb493eeba8a7ac82c50f11f090df6156bd29724  fix_general_regs.patch
+c8ece9876d3f6997e4f2aaaf60e2c01d7d51de3bf3c19b610d938913c16f3de7dedc4527d08994ee544df99d084dd3465f8a08ee8ac64ecf7704880c3fca2aeb  fix_firmware_load_path.patch
+"
