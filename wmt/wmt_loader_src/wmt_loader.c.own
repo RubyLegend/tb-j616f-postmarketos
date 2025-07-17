@@ -1,0 +1,99 @@
+#include <cerrno>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+
+#define PROP_PATH "/run/wmt/"
+
+int main() {
+
+  // Verify whether connsys driver was already initialized
+  // Android used setprop/getprop
+  // Will reimplement with "/run/wmt/*"
+
+  int initialized = 0;
+  int is_error = 0;
+  FILE* ready_fd = fopen(PROP_PATH "connsys.driver.ready", "r");
+  if (ready_fd != NULL) {
+    // Check for value of it
+    
+    int c;
+    char res[2];
+    
+    while ((c = fgetc(ready_fd)) != EOF)
+        res[0] = c;
+    
+    res[1] = '\0';
+ 
+    if (ferror(ready_fd))
+        puts("I/O error when reading. Assuming that driver not initialized.\n");
+    else {
+      if(strcmp(res, "1") == 0)
+        initialized = 1;
+      else
+       initialized = 0;
+    }
+    // Close the file
+    fclose(ready_fd);
+  }
+  // File not exist, so device most likely not even initialized
+
+  printf("First check finished. Result: %d\n", initialized);
+
+  int wmtdetect_fd = open("/dev/wmtdetect", O_RDWR|O_NOCTTY);
+  while(wmtdetect_fd == 0) {
+      puts("wmtdetect not ready yet...");
+      close(wmtdetect_fd);
+      sleep(5);
+      wmtdetect_fd = open("/dev/wmtdetect", O_RDWR|O_NOCTTY);
+  }
+
+  // Reading chip id from conf directory
+  FILE* chip_fd = fopen("/etc/conf.d/wmt", "r");
+  unsigned long chip_id = 0;
+  if (chip_fd == NULL) {
+    // File not exist, must have file
+    printf("Configuration file not found under '/etc/conf.d/wmt'. Please, populate it with only one value: chip_id.\n");
+    fclose(chip_fd);
+    is_error = 1;
+  }
+  else {
+    int c;
+    while ((c = fgetc(chip_fd)) != EOF)
+        chip_id = chip_id*10 + (c-48);
+    if (ferror(chip_fd)){
+        puts("I/O error when reading. Failed to read chip_id.\n");
+        is_error = 1;
+    }
+    else {
+      printf("Got chip_id: %u\n", chip_id);
+      
+      fclose(chip_fd);
+    }
+  }
+
+  // Check for root access, otherwise ioctl call won't be possible
+  if(getegid() != 0) {
+    printf("Current egid: %d, which is not a root gid. Execute this command as root.\n", getegid());
+    is_error = 1;
+  } else {
+    int err = ioctl(wmtdetect_fd, 0x8004770a, 0);  // Some strange value from reverse in Ghidra. Need to investigate.
+
+  }
+
+  if (is_error){
+    close(wmtdetect_fd);
+    return 1;
+  }
+
+
+  if (((uint)chip_id & 0xfffffffd) != 0x6630) {
+
+  }
+
+  close(wmtdetect_fd);
+  return 0;
+}
