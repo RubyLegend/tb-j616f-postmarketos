@@ -9,6 +9,8 @@
 *******************************************************************************
 */
 
+#include <stddef.h>
+#include <stdint.h>
 #define STATIC_BUILD 1
 
 #include "wmt_ioctl.h"
@@ -896,10 +898,10 @@ void display_usage(int chipid)
 	char * usage2[] = {
         "MTK WCN combo tool set, version 1.0-release",
         "Usage: 6620_launcher -m mode -p patchfolderpath [-d uartdevicenode] [-b baudrate] [-c uartflowcontrol]",
-//        "    -m (BT/GPS/FM common interface mode selection)",
-//        "        -1: UART mode (common interface: UART)",
-//        "        -1: UART full mode (common interface UART)",
-//        "        -2: UART mandetary mode (common interface UART)",
+        "    -m (BT/GPS/FM common interface mode selection)",
+        "        -1: UART mode (common interface: UART)",
+        "        -1: UART full mode (common interface UART)",
+        "        -2: UART mandetary mode (common interface UART)",
         "        -4: UART mode (common interface SDIO)",
         "    -p (MTK WCN Combo chip firmware patch location)",
         "        -e.g. /etc/firmware",
@@ -1458,7 +1460,7 @@ static int setHifInfo(int chipId, char *cfgFilePath)
     return gStpMode;
 }
 
-static void* launcher_pwr_on_chip(void * arg)
+static void* launcher_pwr_on_thread(void * arg)
 {
 	int retryCounter = 0;
 	int i_ret = -1;
@@ -1486,7 +1488,7 @@ static void* launcher_pwr_on_chip(void * arg)
 
 	return NULL;
 }
-static void* launcher_set_fwdbg_flag(void * arg)
+static void* launcher_set_fwdbg_thread(void * arg)
 {
     int i_ret = -1;
     int flag = *(int*) arg;
@@ -1500,6 +1502,164 @@ static void* launcher_set_fwdbg_flag(void * arg)
         thread_handle = 0;
     }
     return NULL;
+}
+
+// static void launcher_get_patch_pattern(int param_1, undefined8 *param_2) {
+//   int global_error;
+//   if (param_2 == (undefined8 *)0x0) {
+//     ALOGE("invalid pointer\n");
+//     global_error = 0xffffffff;
+//   }
+//   else {
+//     //...
+//   }
+// }
+
+// Need checks.
+static int launcher_get_patch_version(int fd, void* buf) {
+  ssize_t sVar1;
+  int ret;
+
+  sVar1 = read(fd, (void *)((long)buf + 1), 1);
+  if((int)sVar1 == -1) {
+    ALOGE("read patch_ver failed!\n");
+    ret = 0xffffffff;
+  }
+  else {
+    ret = 0;
+  }
+
+  sVar1 = read(fd, buf, 1);
+  if((int)sVar1 == -1) {
+    ALOGE("read patch_ver failed!\n");
+    ret = 0xfffffffe;
+  }
+
+  return ret;
+
+}
+
+// Needs renaming of functions, also property_set command should definitely do smth
+// Type should be void *, as it seems from signature of pthread_create
+static void* launcher_set_prop_thread(void * arg) {
+  unsigned long *puVar1;
+  unsigned long uVar2;
+  if((arg != (unsigned long *)0x0) && (uVar2 = *(unsigned long *)arg, uVar2 != 0)) {
+    puVar1 = arg + 2;
+    //property_set command
+    if ((int)uVar2 == 0) {
+      ALOGI("set %s to %s [done]", *(unsigned long *)arg, puVar1);
+    }
+    else {
+      ALOGI("set %s to %s [fail]: %d", *(unsigned long *)arg, puVar1, uVar2 & 0xffffffff);
+    }
+
+    // Seems like something is wrong here...
+    // TODO: analyze and fix
+    free((void *)*(unsigned long*)arg);
+    free(arg);
+  }
+  return NULL;
+}
+
+// Need to look after this function, I'm not sure about it's correctness
+static void launcher_set_patch_info(int fd, unsigned int* patch_info, char* patch_full_name, int param_4) {
+  unsigned int patch_seq;
+  unsigned int local_14c, local_150;
+  char local_148[255];
+  int patch_num;
+  int global_error = 0;
+  if (patch_info == (unsigned int *)0x0) {
+    ALOGE("invalid patch infor!\n");
+    global_error = -1;
+  }
+  else if (patch_full_name == (char *)0x0) {
+    ALOGE("invalid patch full name!\n");
+    global_error = -2;
+  }
+  else {
+    if (param_4 !=0){
+      patch_num = (unsigned long)(char)((char)*patch_info >> 4);
+      ALOGI("patch_num = [%d]\n", patch_num);
+      ioctl(fd, WMT_IOCTL_SET_PATCH_NUM, patch_num);
+    }
+
+    patch_seq = (char)*patch_info & 0xf;
+    ALOGI("patch seq = [%d]\n", patch_seq);
+
+    local_14c = *patch_info & 0xffffff00;
+    local_150 = patch_seq;
+    strncpy(local_148, patch_full_name, 0xff);
+    // uStack variable??? it is not even used.
+    ioctl(fd, WMT_IOCTL_SET_PATCH_INFO, &local_150);
+    global_error = 0;
+  }
+
+  // Unknown if statement
+  return;
+}
+// Need to look after this function, I'm not sure about it's correctness
+static void launcher_set_rom_patch_info(int fd, unsigned int* patch_info, char* patch_full_name) {
+  int global_error = 0;
+  if (patch_info == (unsigned int *)0x0) {
+    ALOGE("invalid patch info!\n");
+    global_error = -1;
+  }
+  else if (patch_full_name == (char *)0x0) {
+    ALOGE("invalid patch full name!\n");
+    global_error = -2;
+  }
+  else {
+    ALOGI("rom patch type = [%d]\n");
+
+    unsigned int local_150 = (unsigned int)*(char *)((long)patch_info + 7); 
+    int ret = ioctl(fd, WMT_IOCTL_SET_ROM_PATCH_INFO, &local_150);
+    if (ret != 0) {
+      ALOGE("ioctl WMT_IOCTL_SET_ROM_PATCH_INFO error (0x%x)\n", ret);
+      global_error = -3;
+    }
+  }
+
+  // Unknown if statement
+  return;
+}
+
+static void launcher_set_prop(char* param_1, char* param_2) {
+  size_t sVar3;
+  void *buf;
+  pthread_t pthread;
+  pthread_attr_t pthread_attr;
+
+  void **prop = (void *)malloc(0x70);
+  if(prop == (void *)0x0) {
+    ALOGE("fail to malloc prop: %s", param_1);
+  }
+  else {
+    sVar3 = strlen(param_1);
+    buf = malloc(sVar3 + 1);
+    *prop = buf;
+
+    if (buf == (void *)0x0) {
+      ALOGE("fail to malloc buf: %s", param_1);
+      free(prop);
+    }
+    else {
+      sVar3 = strlen(param_1);
+      memcpy(buf, param_1, sVar3 + 1);
+      sVar3 = strlen(param_2);
+      // used memcpy_chk
+      memcpy(prop + 2, param_2, sVar3 + 1); // 0x60 as 4th param
+      pthread_attr_init(&pthread_attr);
+      pthread_attr_setdetachstate(&pthread_attr, 1);
+      int ret = pthread_create(&pthread, &pthread_attr, launcher_set_prop_thread, prop);
+      if (ret != 0) {
+        ALOGE("create set prop thread fail!\n");
+        free((void *)*prop);
+        free(prop);
+      }
+      pthread_attr_destroy(&pthread_attr);
+    }
+  }
 }
 
 /*
@@ -1581,12 +1741,39 @@ int main(int argc, char *argv[])
 		chipId = 0x6735;
 		ALOGI("for denali chipid convert\n");
 	}
-    if (0x0326 == chipId)
+  
+  if (0x0326 == chipId)
 	{
             chipId = 0x6755;
             ALOGI("for jade chipid convert\n");
+  }
+
+  if (0x0550 < chipId){
+    if (chipId < 0x0699){
+      if (0x0551 == chipId)
+      {
+        ALOGI("for olympus chipid convert\n");
+      }
+      else if (0x0663 == chipId) {
+        ALOGI("for rushmore chipid convert\n");
+      }
+      else if (0x0690 == chipId){
+        ALOGI("for bianco chipid convert\n");
+      }
     }
-        if ((0x6735 == chipId) || (0x6752 == chipId) || (0x6582 == chipId) || (0x6592 == chipId)
+    if (chipId == 0x0699) {
+      ALOGI("for zion chipId convert\n");
+      // goto
+    }
+    else if (chipId == 0x0713) {
+      ALOGI("for cannon chipid convert\n");
+    }
+    else if (chipId == 0x0788) {
+      ALOGI("for sylvia chipid convert\n");
+    }
+  }
+
+  if ((0x6735 == chipId) || (0x6752 == chipId) || (0x6582 == chipId) || (0x6592 == chipId)
               || (0x6572 == chipId) || (0x6571 == chipId) || (0x8127 == chipId)
               || (0x8163 == chipId) || (0x6580 == chipId) || (0x6755 == chipId) || (0x6797 == chipId) || (0x7623 == chipId) ) {
 		ALOGI("run SOC chip flow\n");
@@ -1800,7 +1987,7 @@ int main(int argc, char *argv[])
 
     i_ret = ioctl(gWmtFd, WMT_IOCTL_GET_APO_FLAG, NULL);
     if (i_ret != 0) {
-        if (pthread_create(&thread_handle, NULL, launcher_pwr_on_chip, &chipId)) {
+        if (pthread_create(&thread_handle, NULL, launcher_pwr_on_thread, &chipId)) {
             ALOGE("create pwr on thread fail\n");
         } else {
             ALOGI("create pwr on thread ok\n");
@@ -1929,7 +2116,7 @@ int main(int argc, char *argv[])
                 ALOGI("polling_flag:%d, retry: %d\n", polling_flag, retry);
                 if (!strcmp(fwStateStr, "yes")) {
                     fwdbgEnableFlag = 1;
-                    i_ret = pthread_create(&thread_handle, NULL, launcher_set_fwdbg_flag, &fwdbgEnableFlag);
+                    i_ret = pthread_create(&thread_handle, NULL, launcher_set_fwdbg_thread, &fwdbgEnableFlag);
                     if (i_ret) {
                         ALOGE("create enable firmware dbglog thread fail\n");
                     } else
